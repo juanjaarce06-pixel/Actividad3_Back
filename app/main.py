@@ -24,17 +24,44 @@ def _download_if_missing(url: str, path: str):
 _download_if_missing(MODEL_URL, MODEL_PATH)
 _download_if_missing(LABELS_URL, LABELS_PATH)
 
+with open(LABELS_PATH, "r") as f:
+    LABELS = json.load(f)  # 1000 labels
+
 sess = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
-with open(LABELS_PATH, "r", encoding="utf-8") as f:
-    LABELS = json.load(f)
+input_name = sess.get_inputs()[0].name
 
-app = FastAPI(title="Actividad3 Backend", version="2.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
-                   allow_methods=["*"], allow_headers=["*"])
+def preprocess(img: Image.Image) -> np.ndarray:
+    img = img.convert("RGB").resize((224, 224))
+    arr = np.asarray(img).astype("float32") / 255.0
+    mean = np.array([0.485, 0.456, 0.406], dtype="float32")
+    std = np.array([0.229, 0.224, 0.225], dtype="float32")
+    arr = (arr - mean) / std  # HWC
+    arr = arr.transpose(2, 0, 1)  # CHW
+    arr = np.expand_dims(arr, 0)  # NCHW
+    return arr
 
-@app.get("/")
-def root():
-    return {"message": "OK"}
+def topk_from_logits(logits: np.ndarray, k: int = 5):
+    # logits shape: (1, 1000, 1, 1) ó (1, 1000)
+    vec = logits.reshape(1, -1)[0]
+    exps = np.exp(vec - np.max(vec))
+    probs = exps / exps.sum()
+    idxs = probs.argsort()[-k:][::-1]
+    out = []
+    for i in idxs:
+        out.append({
+            "index": int(i),
+            "label": LABELS[i] if i < len(LABELS) else f"class_{i}",
+            "prob": float(probs[i])
+        })
+    best = out[0]
+    return out, best
+
+app = FastAPI(title="Actividad3 Backend", version="2.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
+)
 
 @app.get("/health")
 def health():
@@ -42,32 +69,13 @@ def health():
 
 @app.get("/labels")
 def labels():
-    return {"classes": LABELS}
-
-def preprocess(img: Image.Image) -> np.ndarray:
-    img = img.convert("RGB").resize((224, 224))
-    arr = np.asarray(img).astype(np.float32) / 255.0
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-    std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-    arr = (arr - mean) / std
-    arr = np.transpose(arr, (2, 0, 1))
-    arr = np.expand_dims(arr, 0)
-    return arr
-
-def softmax(x: np.ndarray) -> np.ndarray:
-    x = x - np.max(x, axis=1, keepdims=True)
-    e = np.exp(x)
-    return e / np.sum(e, axis=1, keepdims=True)
+    return {"count": len(LABELS), "labels": LABELS}
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    content = await file.read()
-    img = Image.open(io.BytesIO(content))
+    data = await file.read()
+    img = Image.open(io.BytesIO(data))
     x = preprocess(img)
-    inp = sess.get_inputs()[0].name
-    logits = sess.run(None, {inp: x})[0]
-    probs = softmax(logits)[0]
-    topk = 5
-    idxs = np.argsort(-probs)[:topk].tolist()
-    results = [{"label": LABELS[i], "index": i, "prob": float(round(probs[i], 6))} for i in idxs]
-    return {"topk": results, "best": results[0], "count_classes": len(LABELS)}
+    logits = sess.run(None, {input_name: x})[0]
+    topk, best = topk_from_logits(logits, k=5)
+    return {"topk": topk, "best": best, "count_classes": len(LABELS)}
