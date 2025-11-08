@@ -1,51 +1,52 @@
 # app/main.py
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 
 app = FastAPI(title="Actividad 3 - Backend", version="1.0.0")
 
-# === CORS ===
-# Para destrabar, usa "*" (luego puedes restringir a tu front).
-# Si quieres restringir ya, usa:
-# allow_origins=["https://actividad3-frontend-537174375411.us-central1.run.app"]
+# ========== CORS ==========
+# Puedes restringir a tu front:
+# ALLOW_ORIGINS = ["https://actividad3-frontend-537174375411.us-central1.run.app"]
+ALLOW_ORIGINS = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],                 # <-- o la URL exacta del front
+    allow_origins=ALLOW_ORIGINS,         # <-- usa la lista de arriba si quieres restringir
     allow_credentials=False,
-    allow_methods=["*"],                 # IMPORTANTE: "*" incluye OPTIONS
-    allow_headers=["*"],                 # al menos "Content-Type" y "Authorization"
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],                 # al menos Content-Type y Authorization
     expose_headers=["*"],
     max_age=86400,
 )
 
-# === Handlers explícitos para preflight ===
-# 1) Sólo para /predict
+# ========== Handlers explícitos para preflight ==========
+# 1) OPTIONS específico para /predict
 @app.options("/predict", include_in_schema=False)
 def options_predict():
-    # Aunque CORSMiddleware normalmente inyecta los headers,
-    # los agregamos explícitos por si el middleware no intercepta antes:
     resp = Response(status_code=204)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Origin"] = ALLOW_ORIGINS[0] if ALLOW_ORIGINS != ["*"] else "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
     resp.headers["Access-Control-Max-Age"] = "86400"
     return resp
 
-# 2) Comodín para cualquier ruta (por si el front pega a otra ruta en el futuro)
+# 2) OPTIONS comodín para cualquier otra ruta
 @app.options("/{path:path}", include_in_schema=False)
 def options_any(path: str):
     resp = Response(status_code=204)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Origin"] = ALLOW_ORIGINS[0] if ALLOW_ORIGINS != ["*"] else "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
     resp.headers["Access-Control-Max-Age"] = "86400"
     return resp
 
+# ========== Health ==========
 @app.get("/health")
 def health():
     return {"status": "ok", "loaded": True, "classes": ["cat", "dog", "bird"]}
 
+# ========== Predict ==========
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     if not file:
