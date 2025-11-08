@@ -11,10 +11,12 @@ ALLOWED_HEADERS = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],          # si quieres, luego restringes al FRONT_URL
     allow_credentials=False,
-    allow_methods=ALLOWED_METHODS,
-    allow_headers=ALLOWED_HEADERS,
+    allow_methods=["*"],          # importante para OPTIONS
+    allow_headers=["*"],          # importante para OPTIONS con content-type
+    expose_headers=[],
+    max_age=86400,                # caching del preflight (opcional)
 )
 
 @app.get("/health")
