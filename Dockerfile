@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
 # Expone el puerto del contenedor
+ENV PORT=8080
 EXPOSE 8080
-
 # <--- ESTA es la línea CMD que viste --->
 # Arranca FastAPI con Uvicorn (NO se ejecuta en la terminal; va dentro del Dockerfile)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
