@@ -5,7 +5,10 @@ from app.schemas import PredictResponse
 from app.services.telemetry import log_prediction, log_error, get_metrics
 
 app = FastAPI(title="Ensemble Image API", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=[
+    "https://actividad3-frontend-537174375411.us-central1.run.app",
+    "http://localhost:5173",
+], allow_methods=["*"], allow_headers=["*"])
 
 ensemble = Ensemble()
 
@@ -30,3 +33,11 @@ async def predict(file: UploadFile = File(...)):
 
 @app.get("/metrics")
 def metrics(): return get_metrics()
+
+
+# --- Extra safety for some platforms that proxy OPTIONS poorly ---
+from fastapi.responses import Response
+
+@app.options("/{path:path}")
+def options_root(path: str = ""):
+    return Response(status_code=204)
